@@ -34,33 +34,19 @@ Patients.shape
 
 # COMMAND ----------
 
-#Checking for duplicate rows
-duplicate_rows = Patients.duplicated().sum()
-print(f"Number of duplicate rows: {duplicate_rows}")
+#Checking for statistical summary of columns
+display(Patients.describe())
 
-#Checking for duplicates based on patient identifier (if any)
-#Display duplicate rows if any exist
-if duplicate_rows > 0:
-    display(Patients[Patients.duplicated(keep=False)].sort_values(by=Patients.columns[0]))
+# COMMAND ----------
+
+#Checking for duplicate rows
+Patients.duplicated().sum()
 
 # COMMAND ----------
 
 #Checking for missing or null values in all columns
-missing_values = Patients.isnull().sum()
-print("Missing or null values per column:")
-print(missing_values)
+Patients.isnull().sum()
 
-#Total missing values across the entire dataset
-total_missing = Patients.isnull().sum().sum()
-print(f"\nTotal missing or null values in the dataset: {total_missing}")
-
-#Display columns with missing values
-print("\nColumns with missing values:")
-cols_with_missing = missing_values[missing_values > 0]
-if len(cols_with_missing) > 0:
-    display(cols_with_missing)
-else:
-    print("No missing or null values found in any column.")
 
 # COMMAND ----------
 
@@ -71,6 +57,11 @@ Patients.dtypes
 
 # MAGIC %md
 # MAGIC _Feature Engineering_
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC *For these other extracted columns,  I wanted to see the groups um dealing with, the kind of diagnoses with thier different levels.Also do Different visualisations*
 
 # COMMAND ----------
 
@@ -99,6 +90,25 @@ display(Patients[[age_column, 'AgeGroup']].head(10))
 
 # COMMAND ----------
 
+# Visualize the distribution of patients across age groups
+age_counts = Patients['AgeGroup'].value_counts().sort_index()
+
+plt.figure(figsize=(8, 5))
+plt.bar(age_counts.index.astype(str), age_counts.values, color='steelblue', edgecolor='black')
+
+plt.title('Distribution of Patients by Age Group', fontsize=14)
+plt.xlabel('Age Group')
+plt.ylabel('Number of Patients')
+
+# Show the count on top of each bar
+for i, count in enumerate(age_counts.values):
+    plt.text(i, count, str(count), ha='center', va='bottom')
+
+plt.tight_layout()
+plt.show()
+
+# COMMAND ----------
+
 # Group length of stay into categories from short to long
 # Adjust the column name if your stay column is named differently
 stay_column = 'Length of Stay'  # change this to match your dataset's stay column name
@@ -121,6 +131,23 @@ print(Patients['StayGroup'].value_counts().sort_index())
 
 # Preview the new column
 display(Patients[[stay_column, 'StayGroup']].head(10))
+
+# COMMAND ----------
+
+# Group the patients by Age Group and Stay Group, then count how many are in each combination
+stay_by_age = pd.crosstab(Patients['AgeGroup'], Patients['StayGroup'])
+display(stay_by_age)
+
+# Plot the counts as a grouped bar chart (one bar per stay group within each age group)
+stay_by_age.plot(kind='bar', figsize=(12, 6))
+
+plt.title('Number of Patients by Age Group and Stay Group')
+plt.xlabel('Age Group')
+plt.ylabel('Number of Patients')
+plt.xticks(rotation=0)
+plt.legend(title='Stay Group', bbox_to_anchor=(1.02, 1), loc='upper left')
+plt.tight_layout()
+plt.show()
 
 # COMMAND ----------
 
@@ -151,6 +178,39 @@ print(Patients['BloodPressureGroup'].value_counts().sort_index())
 
 # Preview the new column
 display(Patients[[bp_column, 'BloodPressureGroup']].head(10))
+
+# COMMAND ----------
+
+# Doughnut chart showing the distribution of Blood Pressure Groups within each Age Group
+
+# Build a crosstab of Age Group vs Blood Pressure Group
+bp_by_age = pd.crosstab(Patients['AgeGroup'], Patients['BloodPressureGroup'])
+display(bp_by_age)
+
+# Plot one doughnut chart per age group
+age_groups = bp_by_age.index.tolist()
+fig, axes = plt.subplots(1, len(age_groups), figsize=(5 * len(age_groups), 5))
+
+# Ensure axes is iterable even with a single age group
+if len(age_groups) == 1:
+    axes = [axes]
+
+for ax, age in zip(axes, age_groups):
+    counts = bp_by_age.loc[age]
+    ax.pie(
+        counts,
+        labels=counts.index,
+        autopct='%1.1f%%',
+        startangle=90,
+        wedgeprops={'width': 0.4},  # this creates the doughnut hole
+        colors=plt.cm.Set3.colors
+    )
+    ax.set_title(f'{age} Age Group')
+
+plt.suptitle('Blood Pressure Group Distribution by Age Group', fontsize=14)
+plt.tight_layout()
+plt.show()
+
 
 # COMMAND ----------
 
@@ -196,20 +256,127 @@ le = LabelEncoder()
 
 # Gender: binary (e.g. Male/Female) -> label encoding maps to 0/1
 Patients['Gender_encoded'] = le.fit_transform(Patients['Gender'])
-display('Gender_encoded')
+
+# Show which number refers to which gender
+# le.classes_ lists the categories in alphabetical order, and each gets a number based on that order
+# For example, if classes_ is ['Female', 'Male'], then Female = 0 and Male = 1
+for number, gender in enumerate(le.classes_):
+    print(f'{gender} = {number}')
+
+# Preview the original and encoded columns side by side
+display(Patients[['Gender', 'Gender_encoded']].head(10))
 
 
 # COMMAND ----------
 
 
-# Target variable: binary (e.g. Yes/No) -> label encoding maps to 0/1
+# Target variable: Readmission is binary (Yes/No) -> label encoding maps it to 0/1
 Patients['Readmission_encoded'] = le.fit_transform(Patients['Readmission'])
+
+# Show which number belongs to which readmission value
+# le.classes_ lists the categories in alphabetical order, so 'No' = 0 and 'Yes' = 1
+for number, readmission in enumerate(le.classes_):
+    print(f'{readmission} = {number}')
 
 # Admission Type: more than 2 categories with no inherent order -> one-hot encoding
 # This avoids implying a false ranking (e.g. 'Emergency' > 'Elective')
+# Each admission type gets its own column: 1 if the patient has that type, 0 otherwise
 Patients = pd.get_dummies(Patients, columns=['Admission Type'], prefix='AdmissionType', dtype=int)
 
 # Preview the encoded columns
-encoded_cols = [c for c in Patients.columns if 'encoded' in c or 'AdmissionType' in c]
-print("Encoded columns:", encoded_cols)
+encoded_cols = ['Readmission', 'Readmission_encoded'] + [c for c in Patients.columns if 'AdmissionType' in c]
+print('\nAdmission Type columns:', [c for c in Patients.columns if 'AdmissionType' in c])
 display(Patients[encoded_cols].head())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC *Train Test Split: in thsi section im going to separate my x features and the y variable,being the target value*
+# MAGIC
+
+# COMMAND ----------
+
+# Defining the target column
+y = Patients['Readmission']
+
+# Defining the input features
+X = Patients.drop(columns=[
+    'Readmission',
+    'Patient ID',
+    'AgeGroup',
+    'StayGroup',
+    'BloodPressureGroup',
+    'BloodSugarGroup'
+])
+
+# Display the input features
+display(X.head())
+
+# Display the target
+display(y.head())
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC *Now, i have to train 80% of the data,test 20% and stratify the dataset to ensure that both training and testing sets maintain approximately the same proportion of readmitted and non-readmitted patients as the original dataset.*
+
+# COMMAND ----------
+
+# Import train_test_split
+from sklearn.model_selection import train_test_split
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.20,
+    random_state=42,
+    stratify=y
+)
+
+# Check the sizes
+print("Training data:", X_train.shape)
+print("Testing data:", X_test.shape)
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ##Scale numerical features
+# MAGIC I have separated and split the data,I'm going to can scale the numerical columns with
+# MAGIC StandardScaler.
+# MAGIC StandardScaler changes numerical values so that they have:
+# MAGIC - A mean close to 0.
+# MAGIC - A standard deviation close to 1.
+# MAGIC This helps algorithms such as Logistic Regression, KNN and SVM work effectively when features have different scales.
+
+# COMMAND ----------
+
+# Import StandardScaler
+from sklearn.preprocessing import StandardScaler
+
+# List the numerical columns to scale
+num_cols = ['Age', 'Blood Pressure', 'Blood Sugar Levels', 'Length of Stay']
+
+# Create the scaler
+scaler = StandardScaler()
+
+# Fit the scaler on the training data, then transform it
+X_train[num_cols] = scaler.fit_transform(X_train[num_cols])
+
+# Transform the test data using the same scaler (fit only on training data)
+X_test[num_cols] = scaler.transform(X_test[num_cols])
+
+# Display the scaled training data
+display(X_train.head())
+
+# COMMAND ----------
+
+#checking that the readmission proportions are similar in both sets
+print("Original target distribution:")
+print(y.value_counts(normalize=True))
+
+print("\nTraining target distribution:")
+print(y_train.value_counts(normalize=True))
+
+print("\nTesting target distribution:")
+print(y_test.value_counts(normalize=True))
